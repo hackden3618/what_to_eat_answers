@@ -251,11 +251,9 @@
         </header>
 
         <div id="fail" hidden>
-            <p class="hint">Couldn't load <code>foods.ts</code> from the filesystem. Serve this folder and open the
-                page over http:</p>
-            <pre><code>cd ~/Documents/Notes
-                    python3 -m http.server 8000
-                    # open http://localhost:8000/bree_foods.html</code></pre>
+            <p class="hint">Couldn't load <code>foods.ts</code>. Serve this folder and open the page over http:</p>
+            <pre><code>python3 -m http.server 8000
+                    # open http://localhost:8000/index.html</code></pre>
         </div>
 
         <main id="app" hidden>
