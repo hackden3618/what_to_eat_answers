@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Her Foods</title>
+    <style>
+        :root {
+            --bg: #0f1115;
+            --card: #1a1e26;
+            --line: #2a2f3a;
+            --text: #e6e8ee;
+            --muted: #8a93a3;
+            --accent: #e8a33d;
+            --accent-soft: #3a3225;
+            --star: #f5c518;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+            line-height: 1.45;
+        }
+
+        .wrap {
+            max-width: 760px;
+            margin: 0 auto;
+            padding: 24px 20px 60px;
+        }
+
+        header {
+            display: flex;
+            align-items: baseline;
+            gap: 12px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 1.5rem;
+        }
+
+        #status {
+            color: var(--muted);
+            font-size: .85rem;
+            flex: 1;
+        }
+
+        #reload {
+            background: none;
+            border: 1px solid var(--line);
+            color: var(--muted);
+            border-radius: 6px;
+            padding: 4px 10px;
+            cursor: pointer;
+            font-size: .8rem;
+        }
+
+        section {
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 18px;
+            margin-bottom: 18px;
+        }
+
+        h2 {
+            margin: 0 0 12px;
+            font-size: 1.05rem;
+        }
+
+        .cards {
+            display: grid;
+            gap: 10px;
+        }
+
+        .card {
+            border: 2px solid var(--line);
+            border-radius: 10px;
+            padding: 12px 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: var(--bg);
+        }
+
+        .card.pick0 {
+            padding: 18px;
+        }
+
+        .card.active {
+            border-color: var(--accent);
+        }
+
+        .card .name {
+            font-size: 1.05rem;
+            font-weight: 600;
+            flex: 1;
+        }
+
+        .card.pick0 .name {
+            font-size: 1.3rem;
+        }
+
+        .card .cat {
+            color: var(--muted);
+            font-size: .75rem;
+            text-transform: uppercase;
+            letter-spacing: .05em;
+        }
+
+        .card .orig {
+            color: var(--muted);
+            font-size: .72rem;
+            font-family: ui-monospace, monospace;
+        }
+
+        .star {
+            background: none;
+            border: none;
+            color: var(--muted);
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 2px 6px;
+        }
+
+        .star.on {
+            color: var(--star);
+        }
+
+        .actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 14px;
+        }
+
+        button.btn {
+            background: var(--accent);
+            color: #1a1205;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 18px;
+            font-size: .95rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        button.btn.ghost {
+            background: none;
+            color: var(--text);
+            border: 1px solid var(--line);
+        }
+
+        .groups {
+            display: grid;
+            gap: 12px;
+        }
+
+        .group h3 {
+            margin: 0 0 8px;
+            font-size: .95rem;
+            color: var(--accent);
+        }
+
+        .rows {
+            display: grid;
+            gap: 6px;
+        }
+
+        .row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--bg);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 6px 10px;
+            font-size: .92rem;
+        }
+
+        .row .name {
+            flex: 1;
+        }
+
+        #history {
+            list-style: none;
+            margin: 0 0 12px;
+            padding: 0;
+            display: grid;
+            gap: 6px;
+        }
+
+        #history li {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            background: var(--bg);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 6px 10px;
+            font-size: .9rem;
+        }
+
+        #history .date {
+            color: var(--muted);
+        }
+
+        #stats {
+            color: var(--muted);
+            font-size: .85rem;
+            margin-top: 12px;
+        }
+
+        .hint {
+            color: var(--accent);
+            background: var(--accent-soft);
+            border-radius: 8px;
+            padding: 10px 12px;
+            font-size: .9rem;
+        }
+
+        code {
+            background: var(--bg);
+            padding: 2px 5px;
+            border-radius: 5px;
+            font-size: .85em;
+        }
+
+        .note {
+            color: var(--muted);
+            font-size: .82rem;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="wrap">
+        <header>
+            <h1>Bree Foods</h1>
+            <span id="status">Loading menu&hellip;</span>
+            <button id="reload" title="Reload menu data">Reload</button>
+        </header>
+
+        <div id="fail" hidden>
+            <p class="hint">Couldn't load <code>foods.ts</code> from the filesystem. Serve this folder and open the
+                page over http:</p>
+            <pre><code>cd ~/Documents/Notes
+                    python3 -m http.server 8000
+                    # open http://localhost:8000/bree_foods.html</code></pre>
+        </div>
+
+        <main id="app" hidden>
+            <section>
+                <h2>Today&rsquo;s Pick</h2>
+                <div class="cards" id="cards"></div>
+                <div class="actions">
+                    <button class="btn" id="accept">Accept &amp; log</button>
+                    <button class="btn ghost" id="shuffle">Shuffle</button>
+                </div>
+            </section>
+
+            <section>
+                <h2>Favorites</h2>
+                <div class="groups" id="favs"></div>
+                <p class="note">Star a meal to boost it in the shuffle.</p>
+            </section>
+
+            <section>
+                <h2>History</h2>
+                <ul id="history">
+                    <li>No meals logged yet.</li>
+                </ul>
+                <button class="btn ghost" id="clear">Clear history</button>
+                <p id="stats"></p>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        (function () {
+            var DATA_SRC = 'foods.ts';
+            var K = 'bree_foods_state';
+            var BOOST = 3;
+            var COOLDOWN_DAYS = 14;
+            var PENALTY = 0.1;
+
+            var MEALS = [];
+            var favorites = [];
+            var history = [];
+            var picks = [];
+            var activePick = 0;
+
+            var statusEl = document.getElementById('status');
+            var appEl = document.getElementById('app');
+            var failEl = document.getElementById('fail');
+
+            function parseData(code) {
+                var fn = new Function(code + '\n;return {ugali: bree_foods_ugali, rice: bree_foods_rice, chapati: bree_foods_chapati};');
+                return fn();
+            }
+
+            function flatten(raw) {
+                var out = [];
+                ['ugali', 'rice', 'chapati'].forEach(function (cat) {
+                    Object.keys(raw[cat] || {}).forEach(function (key) {
+                        var name = raw[cat][key];
+                        out.push({name: name, category: cat});
+                    });
+                });
+                return out;
+            }
+
+            function boot() {
+                loadState();
+                appEl.hidden = false;
+                statusEl.textContent = 'menu loaded \u00b7 ' + MEALS.length + ' meals';
+                reroll();
+                renderAll();
+            }
+
+            function loadState() {
+                try {
+                    var s = localStorage.getItem(K);
+                    if (s) {
+                        var p = JSON.parse(s);
+                        favorites = p.favorites || [];
+                        history = Array.isArray(p.history) ? p.history : [];
+                    }
+                } catch (e) { }
+            }
+
+            function saveState() {
+                try {
+                    localStorage.setItem(K, JSON.stringify({favorites: favorites, history: history}));
+                } catch (e) { }
+            }
+
+            function today() {return new Date().toISOString().slice(0, 10);}
+
+            function daysSince(dateStr) {
+                return (Date.now() - new Date(dateStr + 'T00:00:00').getTime()) / 86400000;
+            }
+
+            function score(meal) {
+                var w = favorites.indexOf(meal.name) !== -1 ? BOOST : 1;
+                history.forEach(function (rec) {
+                    if (rec.name === meal.name && daysSince(rec.date) < COOLDOWN_DAYS) w *= PENALTY;
+                });
+                return w;
+            }
+
+            function weightedPick(n) {
+                var pool = MEALS.slice();
+                var res = [];
+                var i, j, r, total, acc, chosenIdx;
+                for (i = 0; i < n && pool.length; i++) {
+                    total = 0;
+                    pool.forEach(function (m) {total += score(m);});
+                    r = Math.random() * total;
+                    acc = 0;
+                    chosenIdx = 0;
+                    for (j = 0; j < pool.length; j++) {
+                        acc += score(pool[j]);
+                        if (r <= acc) {chosenIdx = j; break;}
+                    }
+                    res.push(pool[chosenIdx]);
+                    pool.splice(chosenIdx, 1);
+                }
+                return res;
+            }
+
+            function pretty(name) {
+                return name.split('_').map(function (w) {
+                    return w ? w.charAt(0).toUpperCase() + w.slice(1) : w;
+                }).join(' ');
+            }
+
+            function renderCards() {
+                var el = document.getElementById('cards');
+                el.innerHTML = '';
+                picks.forEach(function (meal, i) {
+                    var card = document.createElement('div');
+                    card.className = 'card' + (i === 0 ? ' pick0' : '') + (i === activePick ? ' active' : '');
+                    var fav = favorites.indexOf(meal.name) !== -1;
+                    card.innerHTML =
+                        '<div style="flex:1">' +
+                        '<div class="name">' + pretty(meal.name) + '</div>' +
+                        '<div class="cat">' + meal.category + '</div>' +
+                        '<div class="orig">' + meal.name + '</div>' +
+                        '</div>' +
+                        '<button class="star' + (fav ? ' on' : '') + '" data-fav="' + meal.name + '">' + (fav ? '\u2605' : '\u2606') + '</button>';
+                    card.addEventListener('click', function (e) {
+                        if (e.target.dataset.fav === undefined) activePick = i;
+                        renderCards();
+                    });
+                    el.appendChild(card);
+                });
+            }
+
+            function renderFavs() {
+                var el = document.getElementById('favs');
+                el.innerHTML = '';
+                ['ugali', 'rice', 'chapati'].forEach(function (cat) {
+                    var group = document.createElement('div');
+                    group.className = 'group';
+                    var h = document.createElement('h3');
+                    h.textContent = cat;
+                    group.appendChild(h);
+                    var rows = document.createElement('div');
+                    rows.className = 'rows';
+                    MEALS.filter(function (m) {return m.category === cat;}).forEach(function (meal) {
+                        var fav = favorites.indexOf(meal.name) !== -1;
+                        var row = document.createElement('div');
+                        row.className = 'row';
+                        row.innerHTML =
+                            '<span class="name">' + pretty(meal.name) + '</span>' +
+                            '<button class="star' + (fav ? ' on' : '') + '" data-fav="' + meal.name + '">' + (fav ? '\u2605' : '\u2606') + '</button>';
+                        rows.appendChild(row);
+                    });
+                    group.appendChild(rows);
+                    el.appendChild(group);
+                });
+            }
+
+            function renderHistory() {
+                var el = document.getElementById('history');
+                if (!history.length) {
+                    el.innerHTML = '<li>No meals logged yet.</li>';
+                } else {
+                    el.innerHTML = '';
+                    history.slice().reverse().forEach(function (rec) {
+                        var li = document.createElement('li');
+                        li.innerHTML = '<span>' + pretty(rec.name) + '</span><span class="date">' + rec.date + '</span>';
+                        el.appendChild(li);
+                    });
+                }
+                var made = {};
+                history.forEach(function (r) {made[r.name] = true;});
+                var unmade = MEALS.filter(function (m) {return !made[m.name];}).length;
+                document.getElementById('stats').textContent =
+                    MEALS.length + ' meals \u00b7 ' + favorites.length + ' favorites \u00b7 ' + unmade + ' never made';
+            }
+
+            function renderAll() {renderCards(); renderFavs(); renderHistory();}
+
+            function reroll() {
+                picks = weightedPick(3);
+                activePick = 0;
+                renderCards();
+            }
+
+            document.addEventListener('click', function (e) {
+                var btn = e.target.closest('.star');
+                if (btn && btn.dataset.fav) {
+                    var name = btn.dataset.fav;
+                    var idx = favorites.indexOf(name);
+                    if (idx === -1) favorites.push(name); else favorites.splice(idx, 1);
+                    saveState();
+                    renderAll();
+                }
+            });
+
+            document.getElementById('shuffle').addEventListener('click', reroll);
+            document.getElementById('accept').addEventListener('click', function () {
+                var meal = picks[activePick];
+                if (!meal) return;
+                history.push({name: meal.name, date: today()});
+                saveState();
+                reroll();
+                renderHistory();
+                statusEl.textContent = 'logged ' + meal.name;
+            });
+            document.getElementById('clear').addEventListener('click', function () {
+                if (!history.length) return;
+                if (confirm('Clear all meal history?')) {
+                    history = [];
+                    saveState();
+                    renderAll();
+                }
+            });
+            document.getElementById('reload').addEventListener('click', function () {location.reload();});
+
+            function loadData() {
+                fetch(DATA_SRC)
+                    .then(function (r) {if (!r.ok) throw new Error(r.status); return r.text();})
+                    .then(function (code) {MEALS = flatten(parseData(code)); boot();})
+                    .catch(function () {
+                        var s = document.createElement('script');
+                        s.src = DATA_SRC;
+                        s.onload = function () {
+                            try {
+                                MEALS = flatten(parseData(''));
+                                boot();
+                            } catch (e) {notLoaded();}
+                        };
+                        s.onerror = notLoaded;
+                        document.body.appendChild(s);
+                    });
+            }
+
+            function notLoaded() {
+                statusEl.textContent = 'failed to load menu data';
+                failEl.hidden = false;
+            }
+
+            loadData();
+        })();
+    </script>
+</body>
+
+</html>
