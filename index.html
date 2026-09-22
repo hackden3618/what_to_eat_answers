@@ -4,7 +4,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="icon" type="icon" href="./foodfavicon-5-fork-cutlery.ico">
+    <link rel="icon" type="image/x-icon" href="./foodfavicon-5-fork-cutlery.ico">
     <title>Her Foods</title>
     <style>
         :root {
@@ -63,6 +63,47 @@
             padding: 4px 10px;
             cursor: pointer;
             font-size: .8rem;
+        }
+
+        #sync {
+            color: var(--muted);
+            font-size: .82rem;
+        }
+
+        .seg {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 14px;
+        }
+
+        .seg-btn {
+            flex: 1;
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 8px 10px;
+            font-size: .9rem;
+            cursor: pointer;
+        }
+
+        .seg-btn.on {
+            background: var(--accent-soft);
+            border-color: var(--accent);
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        .tag {
+            display: inline-block;
+            color: var(--accent);
+            font-size: .68rem;
+            letter-spacing: .05em;
+            text-transform: uppercase;
+            background: var(--accent-soft);
+            border-radius: 4px;
+            padding: 1px 6px;
+            vertical-align: middle;
         }
 
         section {
@@ -249,6 +290,7 @@
             <h1>Bree Foods</h1>
             <span id="status">Loading menu&hellip;</span>
             <button id="reload" title="Reload menu data">Reload</button>
+            <span id="sync"></span>
         </header>
 
         <div id="fail" hidden>
@@ -259,7 +301,11 @@
 
         <main id="app" hidden>
             <section>
-                <h2>Today&rsquo;s Pick</h2>
+                <h2 id="pickTitle">Today&rsquo;s Pick</h2>
+                <div class="seg" id="daytype" title="Choose the kind of day">
+                    <button class="seg-btn" data-day="normal">Normal day</button>
+                    <button class="seg-btn" data-day="special">Special day</button>
+                </div>
                 <div class="cards" id="cards"></div>
                 <div class="actions">
                     <button class="btn" id="accept">Accept &amp; log</button>
@@ -292,9 +338,19 @@
             var COOLDOWN_DAYS = 14;
             var PENALTY = 0.1;
 
+            var REMOTE = {
+                binId: '6ab21f90ffd5d1605321ed9c',
+                key: '$2a$10$.KcE9BqKB0JUDj8twvQfQedV8.ublqE984lQpoiQLyR56./AnTuxi'
+            };
+            var REMOTE_URL = 'https://api.jsonbin.io/v3/b/' + REMOTE.binId;
+
             var MEALS = [];
+            var SPECIALS = [];
             var favorites = [];
             var history = [];
+            var specialDay = false;
+            var savedUpdatedAt = 0;
+            var syncTimer = null;
             var picks = [];
             var activePick = 0;
 
@@ -303,27 +359,34 @@
             var failEl = document.getElementById('fail');
 
             function parseData(code) {
-                var fn = new Function(code + '\n;return {ugali: bree_foods_ugali, rice: bree_foods_rice, chapati: bree_foods_chapati};');
+                var fn = new Function(code + '\n;return {ugali: bree_foods_ugali, rice: bree_foods_rice, chapati: bree_foods_chapati, special: bree_foods_special || []};');
                 return fn();
             }
 
-            function flatten(raw) {
-                var out = [];
+            function buildPools(raw) {
+                MEALS = [];
+                SPECIALS = [];
+                var specialList = raw.special || [];
                 ['ugali', 'rice', 'chapati'].forEach(function (cat) {
                     Object.keys(raw[cat] || {}).forEach(function (key) {
                         var name = raw[cat][key];
-                        out.push({name: name, category: cat});
+                        var meal = {name: name, category: cat, special: specialList.indexOf(name) !== -1};
+                        if (meal.special) SPECIALS.push(meal); else MEALS.push(meal);
                     });
                 });
-                return out;
             }
 
             function boot() {
                 loadState();
                 appEl.hidden = false;
-                statusEl.textContent = 'menu loaded \u00b7 ' + MEALS.length + ' meals';
+                setStatus('menu loaded');
                 reroll();
                 renderAll();
+                syncFromRemote();
+            }
+
+            function statePayload() {
+                return {favorites: favorites, history: history, specialDay: specialDay, updatedAt: Date.now()};
             }
 
             function loadState() {
@@ -333,14 +396,84 @@
                         var p = JSON.parse(s);
                         favorites = p.favorites || [];
                         history = Array.isArray(p.history) ? p.history : [];
+                        specialDay = !!p.specialDay;
+                        savedUpdatedAt = p.updatedAt || 0;
                     }
                 } catch (e) { }
             }
 
             function saveState() {
+                var payload = statePayload();
+                savedUpdatedAt = payload.updatedAt;
                 try {
-                    localStorage.setItem(K, JSON.stringify({favorites: favorites, history: history}));
+                    localStorage.setItem(K, JSON.stringify(payload));
                 } catch (e) { }
+            }
+
+            function setStatus(msg) {
+                statusEl.textContent = msg + ' \u00b7 ' + (specialDay ? 'special day' : 'normal day');
+            }
+
+            function setSync(msg) {
+                var el = document.getElementById('sync');
+                if (el) el.textContent = msg;
+            }
+
+            function remoteFetch() {
+                if (!REMOTE.binId || !REMOTE.key) return Promise.reject(new Error('not configured'));
+                return fetch(REMOTE_URL, {headers: {'X-Access-Key': REMOTE.key, 'X-Bin-Meta': 'false'}})
+                    .then(function (r) {if (!r.ok) throw new Error(r.status); return r.json();});
+            }
+
+            function remoteWrite() {
+                if (!REMOTE.binId || !REMOTE.key) return;
+                setSync('syncing\u2026');
+                fetch(REMOTE_URL, {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json', 'X-Access-Key': REMOTE.key},
+                    body: JSON.stringify(statePayload())
+                })
+                .then(function (r) {if (!r.ok) throw new Error(r.status); setSync('synced');})
+                .catch(function () {setSync('offline \u00b7 local only');});
+            }
+
+            function scheduleSync() {
+                if (!REMOTE.binId || !REMOTE.key) return;
+                if (syncTimer) clearTimeout(syncTimer);
+                syncTimer = setTimeout(remoteWrite, 800);
+            }
+
+            function reconcile(remoteState) {
+                if (!remoteState || typeof remoteState !== 'object') return;
+                var favSet = {};
+                favorites.forEach(function (n) {favSet[n] = true;});
+                (remoteState.favorites || []).forEach(function (n) {if (n) favSet[n] = true;});
+                favorites = Object.keys(favSet);
+                var histMap = {};
+                history.forEach(function (r) {if (r && r.name) histMap[r.name + '\u0000' + r.date] = r;});
+                (remoteState.history || []).forEach(function (r) {if (r && r.name) histMap[r.name + '\u0000' + r.date] = r;});
+                history = Object.keys(histMap).map(function (k) {return histMap[k];});
+                var remoteUpdated = remoteState.updatedAt || 0;
+                if (remoteUpdated > savedUpdatedAt && remoteState.specialDay !== undefined) specialDay = !!remoteState.specialDay;
+            }
+
+            function syncFromRemote() {
+                remoteFetch()
+                    .then(function (remoteState) {
+                        var remoteUpdated = (remoteState && remoteState.updatedAt) || 0;
+                        var localUpdated = savedUpdatedAt;
+                        reconcile(remoteState);
+                        renderFavs();
+                        renderHistory();
+                        renderDayType();
+                        reroll();
+                        saveState();
+                        if (localUpdated > remoteUpdated || (remoteUpdated === 0 && (favorites.length || history.length))) remoteWrite();
+                        setSync('synced');
+                    })
+                    .catch(function () {
+                        setSync(REMOTE.binId && REMOTE.key ? 'offline \u00b7 local only' : 'sync not configured');
+                    });
             }
 
             function today() {return new Date().toISOString().slice(0, 10);}
@@ -357,22 +490,22 @@
                 return w;
             }
 
-            function weightedPick(n) {
-                var pool = MEALS.slice();
+            function weightedPick(pool, n) {
+                var poolCopy = pool.slice();
                 var res = [];
                 var i, j, r, total, acc, chosenIdx;
-                for (i = 0; i < n && pool.length; i++) {
+                for (i = 0; i < n && poolCopy.length; i++) {
                     total = 0;
-                    pool.forEach(function (m) {total += score(m);});
+                    poolCopy.forEach(function (m) {total += score(m);});
                     r = Math.random() * total;
                     acc = 0;
                     chosenIdx = 0;
-                    for (j = 0; j < pool.length; j++) {
-                        acc += score(pool[j]);
+                    for (j = 0; j < poolCopy.length; j++) {
+                        acc += score(poolCopy[j]);
                         if (r <= acc) {chosenIdx = j; break;}
                     }
-                    res.push(pool[chosenIdx]);
-                    pool.splice(chosenIdx, 1);
+                    res.push(poolCopy[chosenIdx]);
+                    poolCopy.splice(chosenIdx, 1);
                 }
                 return res;
             }
@@ -393,7 +526,7 @@
                     card.innerHTML =
                         '<div style="flex:1">' +
                         '<div class="name">' + pretty(meal.name) + '</div>' +
-                        '<div class="cat">' + meal.category + '</div>' +
+                        '<div class="cat">' + meal.category + (meal.special ? ' <span class="tag">special</span>' : '') + '</div>' +
                         '<div class="orig">' + meal.name + '</div>' +
                         '</div>' +
                         '<button class="star' + (fav ? ' on' : '') + '" data-fav="' + meal.name + '">' + (fav ? '\u2605' : '\u2606') + '</button>';
@@ -408,6 +541,7 @@
             function renderFavs() {
                 var el = document.getElementById('favs');
                 el.innerHTML = '';
+                var all = MEALS.concat(SPECIALS);
                 ['ugali', 'rice', 'chapati'].forEach(function (cat) {
                     var group = document.createElement('div');
                     group.className = 'group';
@@ -416,12 +550,13 @@
                     group.appendChild(h);
                     var rows = document.createElement('div');
                     rows.className = 'rows';
-                    MEALS.filter(function (m) {return m.category === cat;}).forEach(function (meal) {
+                    all.filter(function (m) {return m.category === cat;}).forEach(function (meal) {
                         var fav = favorites.indexOf(meal.name) !== -1;
                         var row = document.createElement('div');
                         row.className = 'row';
                         row.innerHTML =
                             '<span class="name">' + pretty(meal.name) + '</span>' +
+                            (meal.special ? '<span class="tag">special</span>' : '') +
                             '<button class="star' + (fav ? ' on' : '') + '" data-fav="' + meal.name + '">' + (fav ? '\u2605' : '\u2606') + '</button>';
                         rows.appendChild(row);
                     });
@@ -444,18 +579,40 @@
                 }
                 var made = {};
                 history.forEach(function (r) {made[r.name] = true;});
-                var unmade = MEALS.filter(function (m) {return !made[m.name];}).length;
+                var all = MEALS.concat(SPECIALS);
+                var unmade = all.filter(function (m) {return !made[m.name];}).length;
                 document.getElementById('stats').textContent =
-                    MEALS.length + ' meals \u00b7 ' + favorites.length + ' favorites \u00b7 ' + unmade + ' never made';
+                    all.length + ' meals \u00b7 ' + favorites.length + ' favorites \u00b7 ' + unmade + ' never made';
             }
 
-            function renderAll() {renderCards(); renderFavs(); renderHistory();}
+            function renderDayType() {
+                document.querySelectorAll('.seg-btn').forEach(function (b) {
+                    b.classList.toggle('on', b.dataset.day === (specialDay ? 'special' : 'normal'));
+                });
+                document.getElementById('pickTitle').textContent = specialDay ? 'Special Day Pick' : 'Today\u2019s Pick';
+            }
+
+            function renderAll() {renderCards(); renderFavs(); renderHistory(); renderDayType();}
 
             function reroll() {
-                picks = weightedPick(3);
+                var n = 3;
+                var pool = specialDay ? SPECIALS : MEALS;
+                if (pool.length < n) n = pool.length;
+                picks = weightedPick(pool, n);
                 activePick = 0;
                 renderCards();
             }
+
+            document.getElementById('daytype').addEventListener('click', function (e) {
+                var btn = e.target.closest('.seg-btn');
+                if (!btn) return;
+                specialDay = btn.dataset.day === 'special';
+                saveState();
+                scheduleSync();
+                reroll();
+                renderDayType();
+                setStatus('menu loaded');
+            });
 
             document.addEventListener('click', function (e) {
                 var btn = e.target.closest('.star');
@@ -464,6 +621,7 @@
                     var idx = favorites.indexOf(name);
                     if (idx === -1) favorites.push(name); else favorites.splice(idx, 1);
                     saveState();
+                    scheduleSync();
                     renderAll();
                 }
             });
@@ -474,15 +632,17 @@
                 if (!meal) return;
                 history.push({name: meal.name, date: today()});
                 saveState();
+                scheduleSync();
                 reroll();
                 renderHistory();
-                statusEl.textContent = 'logged ' + meal.name;
+                setStatus('logged ' + meal.name);
             });
             document.getElementById('clear').addEventListener('click', function () {
                 if (!history.length) return;
                 if (confirm('Clear all meal history?')) {
                     history = [];
                     saveState();
+                    scheduleSync();
                     renderAll();
                 }
             });
@@ -491,13 +651,13 @@
             function loadData() {
                 fetch(DATA_SRC)
                     .then(function (r) {if (!r.ok) throw new Error(r.status); return r.text();})
-                    .then(function (code) {MEALS = flatten(parseData(code)); boot();})
+                    .then(function (code) {buildPools(parseData(code)); boot();})
                     .catch(function () {
                         var s = document.createElement('script');
                         s.src = DATA_SRC;
                         s.onload = function () {
                             try {
-                                MEALS = flatten(parseData(''));
+                                buildPools(parseData(''));
                                 boot();
                             } catch (e) {notLoaded();}
                         };

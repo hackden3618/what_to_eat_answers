@@ -33,9 +33,9 @@ const bree_foods_chapati = {
     5: "chapati_ndengu_special",
     6: "chapati_kamande",
 }
-// const specials = {
-//     1: bree_foods_ugali.[9],
-//     2: bree_foods_rice.[6],
-//     3: bree_foods_chapati[1],
-//     3: bree_foods_chapati[2],
-// }
+const bree_foods_special = [
+    "ugali_chicken",
+    "rice_chicken",
+    "chapati_beef",
+    "chapati_chicken",
+]
