@@ -106,6 +106,65 @@
             vertical-align: middle;
         }
 
+        .addmeal {
+            display: grid;
+            grid-template-columns: 1fr auto auto auto;
+            gap: 8px;
+            margin-bottom: 14px;
+            align-items: center;
+        }
+
+        .addmeal input[type=text],
+        .addmeal select {
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 8px 10px;
+            font-size: .9rem;
+        }
+
+        .addmeal label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--muted);
+            font-size: .85rem;
+            white-space: nowrap;
+        }
+
+        .addmeal .btn {
+            padding: 8px 14px;
+            font-size: .85rem;
+        }
+
+        .spc {
+            background: none;
+            border: none;
+            color: var(--muted);
+            font-size: .95rem;
+            cursor: pointer;
+            padding: 2px 6px;
+            font-weight: 600;
+        }
+
+        .spc.on {
+            color: var(--accent);
+        }
+
+        .del {
+            background: none;
+            border: none;
+            color: var(--muted);
+            font-size: .9rem;
+            cursor: pointer;
+            padding: 2px 6px;
+        }
+
+        .del:hover {
+            color: #e07070;
+        }
+
         section {
             background: var(--card);
             border: 1px solid var(--line);
@@ -315,8 +374,18 @@
 
             <section>
                 <h2>Favorites</h2>
+                <div class="addmeal">
+                    <input id="mealName" type="text" placeholder="New meal name (e.g. ugali_omena)">
+                    <select id="mealCat">
+                        <option value="ugali">ugali</option>
+                        <option value="rice">rice</option>
+                        <option value="chapati">chapati</option>
+                    </select>
+                    <label><input type="checkbox" id="mealSpecial"> special</label>
+                    <button class="btn" id="addMeal">Add</button>
+                </div>
                 <div class="groups" id="favs"></div>
-                <p class="note">Star a meal to boost it in the shuffle.</p>
+                <p class="note">Star to boost · S marks special-day-only · ✕ removes a meal you added.</p>
             </section>
 
             <section>
@@ -346,8 +415,11 @@
 
             var MEALS = [];
             var SPECIALS = [];
+            var RAW = null;
             var favorites = [];
             var history = [];
+            var customMeals = [];
+            var specials = null;
             var specialDay = false;
             var savedUpdatedAt = 0;
             var syncTimer = null;
@@ -366,18 +438,28 @@
             function buildPools(raw) {
                 MEALS = [];
                 SPECIALS = [];
-                var specialList = raw.special || [];
+                if (specials === null) specials = (raw.special || []).slice();
+                var all = [];
                 ['ugali', 'rice', 'chapati'].forEach(function (cat) {
                     Object.keys(raw[cat] || {}).forEach(function (key) {
-                        var name = raw[cat][key];
-                        var meal = {name: name, category: cat, special: specialList.indexOf(name) !== -1};
-                        if (meal.special) SPECIALS.push(meal); else MEALS.push(meal);
+                        all.push({name: raw[cat][key], category: cat, custom: false});
                     });
+                });
+                customMeals.forEach(function (m) {
+                    if (m && m.name) all.push({name: m.name, category: m.category || 'ugali', custom: true});
+                });
+                all.forEach(function (meal) {
+                    meal.special = specials.indexOf(meal.name) !== -1;
+                    if (meal.special) SPECIALS.push(meal); else MEALS.push(meal);
                 });
             }
 
-            function boot() {
+            function refreshPools() {if (RAW) buildPools(RAW);}
+
+            function boot(raw) {
+                RAW = raw;
                 loadState();
+                buildPools(raw);
                 appEl.hidden = false;
                 setStatus('menu loaded');
                 reroll();
@@ -386,7 +468,7 @@
             }
 
             function statePayload() {
-                return {favorites: favorites, history: history, specialDay: specialDay, updatedAt: Date.now()};
+                return {favorites: favorites, history: history, customMeals: customMeals, specials: specials || [], specialDay: specialDay, updatedAt: Date.now()};
             }
 
             function loadState() {
@@ -396,6 +478,8 @@
                         var p = JSON.parse(s);
                         favorites = p.favorites || [];
                         history = Array.isArray(p.history) ? p.history : [];
+                        customMeals = Array.isArray(p.customMeals) ? p.customMeals : [];
+                        specials = Array.isArray(p.specials) ? p.specials : null;
                         specialDay = !!p.specialDay;
                         savedUpdatedAt = p.updatedAt || 0;
                     }
@@ -453,6 +537,14 @@
                 history.forEach(function (r) {if (r && r.name) histMap[r.name + '\u0000' + r.date] = r;});
                 (remoteState.history || []).forEach(function (r) {if (r && r.name) histMap[r.name + '\u0000' + r.date] = r;});
                 history = Object.keys(histMap).map(function (k) {return histMap[k];});
+                var cmMap = {};
+                customMeals.forEach(function (m) {if (m && m.name) cmMap[m.name] = m;});
+                (remoteState.customMeals || []).forEach(function (m) {if (m && m.name && !cmMap[m.name]) cmMap[m.name] = m;});
+                customMeals = Object.keys(cmMap).map(function (k) {return cmMap[k];});
+                var spSet = {};
+                (specials || []).forEach(function (n) {spSet[n] = true;});
+                (remoteState.specials || []).forEach(function (n) {if (n) spSet[n] = true;});
+                specials = Object.keys(spSet);
                 var remoteUpdated = remoteState.updatedAt || 0;
                 if (remoteUpdated > savedUpdatedAt && remoteState.specialDay !== undefined) specialDay = !!remoteState.specialDay;
             }
@@ -463,6 +555,7 @@
                         var remoteUpdated = (remoteState && remoteState.updatedAt) || 0;
                         var localUpdated = savedUpdatedAt;
                         reconcile(remoteState);
+                        refreshPools();
                         renderFavs();
                         renderHistory();
                         renderDayType();
@@ -529,9 +622,10 @@
                         '<div class="cat">' + meal.category + (meal.special ? ' <span class="tag">special</span>' : '') + '</div>' +
                         '<div class="orig">' + meal.name + '</div>' +
                         '</div>' +
+                        '<button class="spc' + (meal.special ? ' on' : '') + '" data-spc="' + meal.name + '">S</button>' +
                         '<button class="star' + (fav ? ' on' : '') + '" data-fav="' + meal.name + '">' + (fav ? '\u2605' : '\u2606') + '</button>';
                     card.addEventListener('click', function (e) {
-                        if (e.target.dataset.fav === undefined) activePick = i;
+                        if (e.target.dataset.fav === undefined && e.target.dataset.spc === undefined) activePick = i;
                         renderCards();
                     });
                     el.appendChild(card);
@@ -557,7 +651,9 @@
                         row.innerHTML =
                             '<span class="name">' + pretty(meal.name) + '</span>' +
                             (meal.special ? '<span class="tag">special</span>' : '') +
-                            '<button class="star' + (fav ? ' on' : '') + '" data-fav="' + meal.name + '">' + (fav ? '\u2605' : '\u2606') + '</button>';
+                            '<button class="spc' + (meal.special ? ' on' : '') + '" data-spc="' + meal.name + '">S</button>' +
+                            '<button class="star' + (fav ? ' on' : '') + '" data-fav="' + meal.name + '">' + (fav ? '\u2605' : '\u2606') + '</button>' +
+                            (meal.custom ? '<button class="del" data-del="' + meal.name + '" title="Remove \u2018' + meal.name + '\u2019">\u2715</button>' : '');
                         rows.appendChild(row);
                     });
                     group.appendChild(rows);
@@ -615,16 +711,67 @@
             });
 
             document.addEventListener('click', function (e) {
-                var btn = e.target.closest('.star');
-                if (btn && btn.dataset.fav) {
-                    var name = btn.dataset.fav;
+                var star = e.target.closest('.star');
+                var spc = e.target.closest('.spc');
+                var del = e.target.closest('.del');
+                if (star && star.dataset.fav) {
+                    var name = star.dataset.fav;
                     var idx = favorites.indexOf(name);
                     if (idx === -1) favorites.push(name); else favorites.splice(idx, 1);
                     saveState();
                     scheduleSync();
                     renderAll();
+                } else if (spc && spc.dataset.spc) {
+                    var sname = spc.dataset.spc;
+                    var sidx = specials.indexOf(sname);
+                    if (sidx === -1) specials.push(sname); else specials.splice(sidx, 1);
+                    saveState();
+                    scheduleSync();
+                    refreshPools();
+                    renderAll();
+                    reroll();
+                } else if (del && del.dataset.del) {
+                    var dname = del.dataset.del;
+                    customMeals = customMeals.filter(function (m) {return m.name !== dname;});
+                    var didx = specials.indexOf(dname);
+                    if (didx !== -1) specials.splice(didx, 1);
+                    var fidx = favorites.indexOf(dname);
+                    if (fidx !== -1) favorites.splice(fidx, 1);
+                    saveState();
+                    scheduleSync();
+                    refreshPools();
+                    renderAll();
+                    reroll();
                 }
             });
+
+            function slugify(s) {
+                return s.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '').replace(/_+/g, '_').replace(/^_|_$/g, '');
+            }
+
+            var mealNameInput = document.getElementById('mealName');
+            document.getElementById('addMeal').addEventListener('click', addMeal);
+            mealNameInput.addEventListener('keydown', function (e) {if (e.key === 'Enter') addMeal();});
+
+            function addMeal() {
+                var name = slugify(mealNameInput.value);
+                if (!name) {mealNameInput.focus(); return;}
+                var exists = MEALS.concat(SPECIALS).some(function (m) {return m.name === name;});
+                if (exists) {
+                    setStatus('already exists: ' + name);
+                    mealNameInput.select();
+                    return;
+                }
+                customMeals.push({name: name, category: document.getElementById('mealCat').value});
+                if (document.getElementById('mealSpecial').checked && specials.indexOf(name) === -1) specials.push(name);
+                mealNameInput.value = '';
+                saveState();
+                scheduleSync();
+                refreshPools();
+                renderAll();
+                reroll();
+                setStatus('added ' + name);
+            }
 
             document.getElementById('shuffle').addEventListener('click', reroll);
             document.getElementById('accept').addEventListener('click', function () {
@@ -651,14 +798,13 @@
             function loadData() {
                 fetch(DATA_SRC)
                     .then(function (r) {if (!r.ok) throw new Error(r.status); return r.text();})
-                    .then(function (code) {buildPools(parseData(code)); boot();})
+                    .then(function (code) {boot(parseData(code));})
                     .catch(function () {
                         var s = document.createElement('script');
                         s.src = DATA_SRC;
                         s.onload = function () {
                             try {
-                                buildPools(parseData(''));
-                                boot();
+                                boot(parseData(''));
                             } catch (e) {notLoaded();}
                         };
                         s.onerror = notLoaded;
